@@ -7,69 +7,16 @@ import ProtectedRoute from "@/shared/components/ProtectedRoute";
 import DataTable from "@/shared/components/DataTable";
 import ConfirmModal from "@/app/shared/components/ConfirmModal";
 import * as XLSX from 'xlsx';
+import { Base_url } from '@/app/api/config/BaseUrl';
+import axios from 'axios';
 
-// Mock data for roles
-const mockRoles = [
-  {
-    id: "1",
-    name: "Admin",
-    description: "Full access to all modules and functionalities",
-    navigationAccess: ["dashboard", "leads", "users", "roles", "transactions", "reports", "settings"],
-    departmentAccess: ["health", "vehicle", "life", "property", "travel"],
-    status: "active",
-    createdAt: "2024-03-15T10:00:00Z",
-    updatedAt: "2024-03-15T10:00:00Z"
-  },
-  {
-    id: "2",
-    name: "Sales Executive - Health",
-    description: "Access to health insurance leads and transactions",
-    navigationAccess: ["dashboard", "leads", "transactions"],
-    departmentAccess: ["health"],
-    status: "active",
-    createdAt: "2024-03-15T10:00:00Z",
-    updatedAt: "2024-03-15T10:00:00Z"
-  },
-  {
-    id: "3",
-    name: "Sales Executive - Vehicle",
-    description: "Access to vehicle insurance leads and transactions",
-    navigationAccess: ["dashboard", "leads", "transactions"],
-    departmentAccess: ["vehicle"],
-    status: "active",
-    createdAt: "2024-03-15T10:00:00Z",
-    updatedAt: "2024-03-15T10:00:00Z"
-  },
-  {
-    id: "4",
-    name: "Support Staff",
-    description: "Access to user management and support features",
-    navigationAccess: ["dashboard", "users", "leads"],
-    departmentAccess: ["health", "vehicle", "life", "property", "travel"],
-    status: "active",
-    createdAt: "2024-03-15T10:00:00Z",
-    updatedAt: "2024-03-15T10:00:00Z"
-  }
-];
-
-// Navigation and department labels mapping
-const navigationLabels: { [key: string]: string } = {
-  dashboard: "Dashboard",
-  leads: "Leads",
-  users: "Users",
-  roles: "Roles",
-  transactions: "Transactions",
-  reports: "Reports",
-  settings: "Settings"
-};
-
-const departmentLabels: { [key: string]: string } = {
-  health: "Health Insurance",
-  vehicle: "Vehicle Insurance",
-  life: "Life Insurance",
-  property: "Property Insurance",
-  travel: "Travel Insurance"
-};
+interface Permission {
+  id: string;
+  name: string;
+  description: string;
+  module: string;
+  isActive: boolean;
+}
 
 const Roles = () => {
   const router = useRouter();
@@ -79,51 +26,83 @@ const Roles = () => {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
+  const [showPermissionModal, setShowPermissionModal] = useState(false);
+  const [selectedRole, setSelectedRole] = useState<any>(null);
+  const [permissions, setPermissions] = useState<Permission[]>([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [selectedPermissions, setSelectedPermissions] = useState<string[]>([]);
+  const [updatingPermissions, setUpdatingPermissions] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 10,
+    totalPages: 1,
+    totalResults: 0
+  });
 
   useEffect(() => {
-    // Simulate API call with setTimeout
-    setTimeout(() => {
-      fetchRoles();
-    }, 500);
-  }, []);
+    fetchRoles();
+  }, [pagination.page]);
 
-  const fetchRoles = () => {
+  const fetchPermissions = async () => {
+    try {
+      setLoadingPermissions(true);
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${Base_url}permissions`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setPermissions(response.data.results);
+    } catch (error) {
+      console.error('Error fetching permissions:', error);
+    } finally {
+      setLoadingPermissions(false);
+    }
+  };
+
+  const fetchRoles = async () => {
     try {
       setLoading(true);
-      // Format the mock data according to table headers
-      const formattedData = mockRoles.map((role) => ({
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${Base_url}roles`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const { results, page, limit, totalPages, totalResults } = response.data;
+      
+      setPagination({
+        page,
+        limit,
+        totalPages,
+        totalResults
+      });
+
+      const formattedData = results.map((role: any) => ({
         name: (
           <div className="flex items-center gap-2">
             <span>{role.name || "--"}</span>
           </div>
         ),
         description: role.description || "--",
-        navigationAccess: (
-          <div className="flex flex-wrap gap-1">
-            {role.navigationAccess?.map((access: string) => (
-              <span key={access} className="px-2 py-1 text-xs bg-primary/10 text-primary rounded-full">
-                {navigationLabels[access] || access}
-              </span>
-            ))}
-          </div>
-        ),
-        departmentAccess: (
-          <div className="flex flex-wrap gap-1">
-            {role.departmentAccess?.map((dept: string) => (
-              <span key={dept} className="px-2 py-1 text-xs bg-success/10 text-success rounded-full">
-                {departmentLabels[dept] || dept}
-              </span>
-            ))}
-          </div>
-        ),
         status: (
           <span className={`px-2 py-1 text-xs rounded-full ${
-            role.status === 'active' 
+            role.isActive 
               ? 'bg-success/10 text-success' 
               : 'bg-danger/10 text-danger'
           }`}>
-            {role.status || '--'}
+            {role.isActive ? 'Active' : 'Inactive'}
           </span>
+        ),
+        permissionManager: (
+          <button
+            onClick={() => openPermissionModal(role)}
+            className="ti-btn ti-btn-primary !py-1 !px-2 !text-[0.75rem]"
+          >
+            <i className="ri-settings-4-line font-semibold align-middle mr-1"></i>
+            Manage Permissions
+          </button>
         ),
         actions: [
           {
@@ -153,6 +132,57 @@ const Roles = () => {
     }
   };
 
+  const openPermissionModal = async (role: any) => {
+    setSelectedRole(role);
+    setShowPermissionModal(true);
+    try {
+      // First fetch the role's current permissions
+      const token = localStorage.getItem("token");
+      const response = await axios.get(`${Base_url}role-permissions/roles/${role.id}/permissions`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      // Extract just the IDs from the permission objects
+      const currentPermissions = response?.data?.map((permission: any) => permission.id) || [];
+      console.log('Current permission IDs:', currentPermissions); // For debugging
+      setSelectedPermissions(currentPermissions);
+      
+      // Then fetch all available permissions
+      await fetchPermissions();
+    } catch (error) {
+      console.error('Error fetching role permissions:', error);
+      // If there's an error, still fetch available permissions
+      await fetchPermissions();
+    }
+  };
+
+  const handlePermissionUpdate = async () => {
+    if (!selectedRole) return;
+    
+    setUpdatingPermissions(true);
+    try {
+      const token = localStorage.getItem("token");
+      const response = await axios.post(`${Base_url}role-permissions/roles/${selectedRole.id}/permissions`, {
+        permissionIds: selectedPermissions
+      }, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      
+      if (response.data) {
+        setShowPermissionModal(false);
+        fetchRoles(); // Refresh the roles list
+      }
+    } catch (error) {
+      console.error("Error updating permissions:", error);
+    } finally {
+      setUpdatingPermissions(false);
+    }
+  };
+
   const viewRole = (roleId: string) => {
     router.push(`/roles/view?id=${roleId}`);
   };
@@ -170,13 +200,12 @@ const Roles = () => {
     
     setDeleteLoading(true);
     try {
-      // Simulate API call with setTimeout
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Remove the role from mock data
-      const updatedRoles = mockRoles.filter(role => role.id !== roleToDelete);
-      mockRoles.length = 0;
-      mockRoles.push(...updatedRoles);
+      const token = localStorage.getItem("token");
+      await axios.delete(`${Base_url}roles/${roleToDelete}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
       
       fetchRoles(); // Refresh the roles list
       setShowDeleteModal(false);
@@ -194,12 +223,10 @@ const Roles = () => {
 
   const handleExport = () => {
     // Create a new array without the actions column
-    const exportData = mockRoles.map(role => ({
-      'Name': role.name,
+    const exportData = roles.map(role => ({
+      'Name': role.name.props.children[0].props.children,
       'Description': role.description,
-      'Navigation Access': role.navigationAccess.map(access => navigationLabels[access] || access).join(', '),
-      'Department Access': role.departmentAccess.map(dept => departmentLabels[dept] || dept).join(', '),
-      'Status': role.status
+      'Status': role.status.props.children
     }));
 
     // Create a worksheet
@@ -216,8 +243,7 @@ const Roles = () => {
   const headers = [
     { key: "name", label: "Role Name", sortable: true },
     { key: "description", label: "Description", sortable: false },
-    { key: "navigationAccess", label: "Navigation Access", sortable: false },
-    { key: "departmentAccess", label: "Department Access", sortable: false },
+    { key: "permissionManager", label: "Permission Manager", sortable: false },
     { key: "status", label: "Status", sortable: false },
     { key: "actions", label: "Actions", sortable: false },
   ];
@@ -254,12 +280,17 @@ const Roles = () => {
               ) : error ? (
                 <div className="text-center text-danger">{error}</div>
               ) : (
-                <DataTable headers={headers} data={roles} />
+                <DataTable 
+                  headers={headers} 
+                  data={roles}
+                />
               )}
             </div>
           </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
       <ConfirmModal
         isOpen={showDeleteModal}
         onClose={() => setShowDeleteModal(false)}
@@ -268,6 +299,69 @@ const Roles = () => {
         message="Are you sure you want to delete this role? This action cannot be undone."
         loading={deleteLoading}
       />
+
+      {/* Permission Management Modal */}
+      <div className={`fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center ${showPermissionModal ? '' : 'hidden'}`}>
+        <div className="bg-white rounded-lg p-6 w-full max-w-2xl">
+          <div className="flex justify-between items-center mb-4">
+            <h3 className="text-lg font-semibold">
+              Manage Permissions - {selectedRole?.name}
+            </h3>
+            <button
+              onClick={() => setShowPermissionModal(false)}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <i className="ri-close-line text-xl"></i>
+            </button>
+          </div>
+          
+          <div className="max-h-[60vh] overflow-y-auto">
+            {loadingPermissions ? (
+              <div className="text-center py-4">Loading permissions...</div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4">
+                {permissions.map((permission) => (
+                  <div key={permission.id} className="flex items-center">
+                    <input
+                      type="checkbox"
+                      id={`perm-${permission.id}`}
+                      checked={selectedPermissions.includes(permission.id)}
+                      onChange={(e) => {
+                        const newPermissions = e.target.checked
+                          ? [...selectedPermissions, permission.id]
+                          : selectedPermissions.filter(v => v !== permission.id);
+                        setSelectedPermissions(newPermissions);
+                      }}
+                      className="form-checkbox"
+                    />
+                    <label htmlFor={`perm-${permission.id}`} className="ml-2">
+                      {permission.name}
+                    </label>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end space-x-2 mt-6">
+            <button
+              type="button"
+              className="ti-btn ti-btn-light"
+              onClick={() => setShowPermissionModal(false)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="ti-btn ti-btn-primary"
+              onClick={handlePermissionUpdate}
+              disabled={updatingPermissions}
+            >
+              {updatingPermissions ? 'Updating...' : 'Update Permissions'}
+            </button>
+          </div>
+        </div>
+      </div>
     </Fragment>
   );
 };
